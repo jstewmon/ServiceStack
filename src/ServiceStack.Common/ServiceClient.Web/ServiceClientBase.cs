@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using ServiceStack.Logging;
@@ -109,6 +110,71 @@ namespace ServiceStack.ServiceClient.Web
 				this.asyncClient.Timeout = value;
 			}
 		}
+
+        class Error
+        {
+            public string message { get; set; }
+        }
+        private void apiTest()
+        {
+            var client = new JsonServiceClient();
+            client.ForResponseCode(400, 409).Use<Error>(e => Console.WriteLine(e.message));
+            //client.On<Error>(409, e => Console.WriteLine(e.message));
+        }
+
+        private Dictionary<int, Delegate> ResponseHandlers { get; set; }
+        private List<int> responseCodeStack = new List<int>();
+	    private Delegate responseCodeHandler;
+
+        private void flushHandlerAndCodes()
+        {
+            foreach (var code in responseCodeStack)
+            {
+                ResponseHandlers.Add(code, responseCodeHandler);
+            }
+            responseCodeStack.Clear();
+        }
+
+	    public ServiceClientBase Use<T>(Action<T> handler)
+        {
+            if(handler == null)
+            {
+                throw new ArgumentNullException("handler");
+            }
+            responseCodeHandler = handler;
+	        if(responseCodeStack.Count != 0)
+	        {
+	            flushHandlerAndCodes();
+	        }
+	        return this;
+	    }
+
+        public ServiceClientBase ForResponseCode(params int[] code)
+        {
+            if(code == null)
+            {
+                throw new ArgumentNullException("code");
+            }
+            responseCodeStack.AddRange(code);
+            if(responseCodeHandler != null)
+            {
+                flushHandlerAndCodes();
+            }
+            return this;
+        }
+
+        private void Dispatch(int responseCode)
+        {
+            if(!ResponseHandlers.ContainsKey(responseCode))
+            {
+                return;
+            }
+            var handler = ResponseHandlers[responseCode];
+            if(handler.Method.ContainsGenericParameters)
+            {
+                var possibleTypes = handler.Method.GetGenericArguments();
+            }
+        }
 
 		public abstract string ContentType { get; }
 
